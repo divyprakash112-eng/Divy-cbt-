@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <meta
+        name="description"
+        content="CBT Premium Test Maker - Create NTA-CBT style mock exams from PDF question papers."
+    >
+
+    <title>CBT Premium Test Maker</title>
+
+    <!-- Our stylesheet will be added in Step 2 -->
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- =========================================================
+         APP SHELL
+         ========================================================= -->
+    <div id="app">
+
+        <!-- =====================================================
+             TOP NAVIGATION
+             ===================================================== -->
+        <header class="app-header">
+
+            <div class="brand">
+
+                <div class="brand-mark">
+                    CBT
+                </div>
+
+                <div class="brand-text">
+                    <h1>CBT Premium</h1>
+                    <span>Test Maker</span>
+                </div>
+
+            </div>
+
+            <div class="header-actions">
+
+                <button
+                    type="button"
+                    id="saveProjectBtn"
+                    class="header-btn"
+                >
+                    Save Project
+                </button>
+
+                <button
+                    type="button"
+                    id="loadProjectBtn"
+                    class="header-btn"
+                >
+                    Load Project
+                </button>
+
+                <input
+                    type="file"
+                    id="projectFileInput"
+                    accept=".json,application/json"
+                    hidden
+                >
+
+            </div>
+
+        </header>
+
+
+        <!-- =====================================================
+             MAIN WORKSPACE
+             ===================================================== -->
+        <main class="workspace">
+
+            <!-- =================================================
+                 LEFT SIDEBAR
+                 ================================================= -->
+            <aside class="left-sidebar">
+
+                <div class="sidebar-heading">
+                    <div>
+                        <span class="eyebrow">BUILD</span>
+                        <h2>Question Paper</h2>
+                    </div>
+                </div>
+
+
+                <!-- PDF UPLOAD -->
+                <section class="panel upload-panel">
+
+                    <div class="panel-title">
+                        <span class="step-number">01</span>
+
+                        <div>
+                            <h3>Upload PDF</h3>
+                            <p>Start with your question paper</p>
+                        </div>
+                    </div>
+
+
+                    <label
+                        for="pdfInput"
+                        id="dropZone"
+                        class="drop-zone"
+                    >
+
+                        <div class="upload-icon">
+                            ↑
+                        </div>
+
+                        <strong>Drop PDF here</strong>
+
+                        <span>
+                            or click to browse
+                        </span>
+
+                        <small>
+                            PDF files only
+                        </small>
+
+                    </label>
+
+                    <input
+                        type="file"
+                        id="pdfInput"
+                        accept="application/pdf,.pdf"
+                        hidden
+                    >
+
+                </section>
+
+
+                <!-- QUESTION LIST -->
+                <section class="panel questions-panel">
+
+                    <div class="panel-title question-panel-title">
+
+                        <div>
+                            <span class="eyebrow">QUESTIONS</span>
+
+                            <h3>
+                                <span id="questionCount">0</span>
+                                Questions
+                            </h3>
+                        </div>
+
+                        <span
+                            id="answerKeyCount"
+                            class="count-badge"
+                        >
+                            0 keyed
+                        </span>
+
+                    </div>
+
+
+                    <div
+                        id="subjectSummary"
+                        class="subject-summary"
+                    >
+                        <span class="empty-summary">
+                            Subject counts will appear here.
+                        </span>
+                    </div>
+
+
+                    <div
+                        id="questionList"
+                        class="question-list"
+                    >
+
+                        <div class="empty-state">
+
+                            <div class="empty-state-icon">
+                                ?
+                            </div>
+
+                            <strong>No questions yet</strong>
+
+                            <p>
+                                Upload a PDF, select a question area,
+                                and add it here.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </aside>
+
+
+            <!-- =================================================
+                 CENTER PDF WORKSPACE
+                 ================================================= -->
+            <section class="pdf-workspace">
+
+                <!-- PDF TOOLBAR -->
+                <div class="pdf-toolbar">
+
+                    <div class="pdf-info">
+
+                        <span
+                            id="pdfFileName"
+                            class="file-name"
+                        >
+                            No PDF loaded
+                        </span>
+
+                        <span
+                            id="pdfPageInfo"
+                            class="page-info"
+                        >
+                            Page 0 of 0
+                        </span>
+
+                    </div>
+
+
+                    <div class="pdf-controls">
+
+                        <button
+                            type="button"
+                            id="prevPageBtn"
+                            class="icon-btn"
+                            disabled
+                            aria-label="Previous page"
+                        >
+                            ‹
+                        </button>
+
+                        <button
+                            type="button"
+                            id="nextPageBtn"
+                            class="icon-btn"
+                            disabled
+                            aria-label="Next page"
+                        >
+                            ›
+                        </button>
+
+                        <div class="control-divider"></div>
+
+                        <button
+                            type="button"
+                            id="zoomOutBtn"
+                            class="icon-btn"
+                            disabled
+                            aria-label="Zoom out"
+                        >
+                            −
+                        </button>
+
+                        <span
+                            id="zoomLevel"
+                            class="zoom-level"
+                        >
+                            100%
+                        </span>
+
+                        <button
+                            type="button"
+                            id="zoomInBtn"
+                            class="icon-btn"
+                            disabled
+                            aria-label="Zoom in"
+                        >
+                            +
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- PDF CANVAS AREA -->
+                <div
+                    id="pdfViewport"
+                    class="pdf-viewport"
+                >
+
+                    <div
+                        id="pdfEmptyState"
+                        class="pdf-empty-state"
+                    >
+
+                        <div class="document-icon">
+                            ▤
+                        </div>
+
+                        <h2>
+                            Your question paper appears here
+                        </h2>
+
+                        <p>
+                            Upload a PDF from the left panel to begin
+                            extracting questions.
+                        </p>
+
+                    </div>
+
+
+                    <div
+                        id="canvasWrapper"
+                        class="canvas-wrapper"
+                        hidden
+                    >
+
+                        <canvas
+                            id="pdfCanvas"
+                        ></canvas>
+
+                        <!-- Selection overlay -->
+                        <div
+                            id="selectionOverlay"
+                            class="selection-overlay"
+                            hidden
+                        ></div>
+
+                    </div>
+
+                </div>
+
+
+                <!-- CROP ACTION BAR -->
+                <div class="crop-toolbar">
+
+                    <div class="selection-status">
+
+                        <span
+                            id="selectionStatusDot"
+                            class="status-dot"
+                        ></span>
+
+                        <span id="selectionStatus">
+                            Select a question region on the page
+                        </span>
+
+                    </div>
+
+
+                    <button
+                        type="button"
+                        id="addQuestionBtn"
+                        class="primary-btn"
+                        disabled
+                    >
+                        <span>+</span>
+                        Add as Question
+                    </button>
+
+                </div>
+
+            </section>
+
+
+            <!-- =================================================
+                 RIGHT SETTINGS PANEL
+                 ================================================= -->
+            <aside class="right-sidebar">
+
+                <div class="settings-heading">
+
+                    <span class="eyebrow">CONFIGURE</span>
+
+                    <h2>
+                        Exam Settings
+                    </h2>
+
+                    <p>
+                        Define how your CBT exam will behave.
+                    </p>
+
+                </div>
+
+
+                <form
+                    id="settingsForm"
+                    class="settings-form"
+                >
+
+                    <!-- TEST TITLE -->
+                    <div class="form-group">
+
+                        <label for="testTitle">
+                            Test Title
+                        </label>
+
+                        <input
+                            type="text"
+                            id="testTitle"
+                            name="testTitle"
+                            placeholder="e.g. NEET Full Syllabus Mock Test"
+                            value="CBT Mock Test"
+                        >
+
+                    </div>
+
+
+                    <!-- DURATION -->
+                    <div class="form-row">
+
+                        <div class="form-group">
+
+                            <label for="duration">
+                                Duration
+                            </label>
+
+                            <div class="input-with-suffix">
+
+                                <input
+                                    type="number"
+                                    id="duration"
+                                    name="duration"
+                                    min="1"
+                                    max="600"
+                                    value="180"
+                                >
+
+                                <span>min</span>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- OPTIONS -->
+                        <div class="form-group">
+
+                            <label for="optionCount">
+                                Options
+                            </label>
+
+                            <select
+                                id="optionCount"
+                                name="optionCount"
+                            >
+
+                                <option value="2">
+                                    2
+                                </option>
+
+                                <option value="3">
+                                    3
+                                </option>
+
+                                <option
+                                    value="4"
+                                    selected
+                                >
+                                    4
+                                </option>
+
+                                <option value="5">
+                                    5
+                                </option>
+
+                            </select>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- MARKING -->
+                    <div class="form-section">
+
+                        <div class="section-label">
+                            Marking Scheme
+                        </div>
+
+                        <div class="form-row">
+
+                            <div class="form-group">
+
+                                <label for="correctMarks">
+                                    Correct
+                                </label>
+
+                                <div class="input-with-prefix">
+
+                                    <span>+</span>
+
+                                    <input
+                                        type="number"
+                                        id="correctMarks"
+                                        name="correctMarks"
+                                        min="0"
+                                        step="0.25"
+                                        value="4"
+                                    >
+
+                                </div>
+
+                            </div>
+
+
+                            <div class="form-group">
+
+                                <label for="negativeMarks">
+                                    Wrong
+                                </label>
+
+                                <div class="input-with-prefix negative">
+
+                                    <span>−</span>
+
+                                    <input
+                                        type="number"
+                                        id="negativeMarks"
+                                        name="negativeMarks"
+                                        min="0"
+                                        step="0.25"
+                                        value="1"
+                                    >
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- SUBJECT ORDER -->
+                    <div class="form-group">
+
+                        <label for="subjectOrder">
+                            Subject Order
+                        </label>
+
+                        <input
+                            type="text"
+                            id="subjectOrder"
+                            name="subjectOrder"
+                            placeholder="Physics, Chemistry, Botany, Zoology"
+                            value="Physics, Chemistry, Botany, Zoology"
+                        >
+
+                        <small class="field-help">
+                            Comma-separated. Subjects appear in this
+                            order in the exported exam.
+                        </small>
+
+                    </div>
+
+
+                    <!-- INSTRUCTIONS -->
+                    <div class="form-group">
+
+                        <label for="instructions">
+                            Instructions
+                        </label>
+
+                        <textarea
+                            id="instructions"
+                            name="instructions"
+                            rows="7"
+                            placeholder="Enter instructions candidates should read before starting the test..."
+                        >1. Read each question carefully before answering.
+2. Select the most appropriate option.
+3. You can mark questions for review and return to them later.
+4. The test will be submitted automatically when the timer reaches zero.</textarea>
+
+                    </div>
+
+                </form>
+
+
+                <!-- EXPORT -->
+                <div class="export-section">
+
+                    <div
+                        id="exportWarning"
+                        class="export-warning"
+                        hidden
+                    >
+                        <strong>Answer keys missing</strong>
+
+                        <span>
+                            Some questions do not have a correct answer
+                            selected. You can still export the exam.
+                        </span>
+                    </div>
+
+
+                    <button
+                        type="button"
+                        id="exportExamBtn"
+                        class="export-btn"
+                    >
+
+                        <span class="export-icon">
+                            ↓
+                        </span>
+
+                        <span>
+                            <strong>
+                                Generate & Download Exam
+                            </strong>
+
+                            <small>
+                                Standalone offline HTML
+                            </small>
+                        </span>
+
+                    </button>
+
+                    <p class="privacy-note">
+                        Everything stays in your browser.
+                        No question data is uploaded.
+                    </p>
+
+                </div>
+
+            </aside>
+
+        </main>
+
+
+        <!-- =====================================================
+             TOAST NOTIFICATIONS
+             ===================================================== -->
+        <div
+            id="toastContainer"
+            class="toast-container"
+            aria-live="polite"
+        ></div>
+
+
+        <!-- =====================================================
+             LOADING OVERLAY
+             ===================================================== -->
+        <div
+            id="loadingOverlay"
+            class="loading-overlay"
+            hidden
+        >
+
+            <div class="loading-card">
+
+                <div class="spinner"></div>
+
+                <strong id="loadingText">
+                    Processing...
+                </strong>
+
+                <span>
+                    Please wait
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- =====================================================
+             CONFIRMATION MODAL
+             ===================================================== -->
+        <div
+            id="confirmModal"
+            class="modal-backdrop"
+            hidden
+        >
+
+            <div
+                class="modal-card"
+                role="dialog"
+                aria-modal="true"
+            >
+
+                <div class="modal-icon">
+                    !
+                </div>
+
+                <h2 id="modalTitle">
+                    Are you sure?
+                </h2>
+
+                <p id="modalMessage">
+                    Please confirm this action.
+                </p>
+
+                <div class="modal-actions">
+
+                    <button
+                        type="button"
+                        id="modalCancelBtn"
+                        class="secondary-btn"
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="button"
+                        id="modalConfirmBtn"
+                        class="primary-btn"
+                    >
+                        Confirm
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =========================================================
+         PDF.JS
+         STEP 1: Load PDF.js from CDN.
+         
+         IMPORTANT:
+         The FINAL EXPORTED EXAM will NOT depend on PDF.js.
+         PDF.js is needed only by the maker tool to render the
+         uploaded source PDF.
+         ========================================================= -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs"
+        type="module"
+    ></script>
+
+
+    <!-- Main application JavaScript -->
+    <script
+        src="app.js"
+        type="module"
+    ></script>
+
+</body>
+</html>
