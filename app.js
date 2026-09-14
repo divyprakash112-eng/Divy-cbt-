@@ -2,38 +2,25 @@
    CBT PREMIUM TEST MAKER
    app.js
 
-   STEP 3
+   STEP 4
    - PDF upload
    - Drag & drop
    - PDF.js rendering
    - Page navigation
-   - Zoom controls
-   - Loading/error handling
-
-   Later steps will add:
-   - Cropping
-   - Question management
-   - Answer keys
-   - Project save/load
-   - Autosave
-   - Exam generator
+   - Zoom
+   - Mouse crop selection
+   - Touch crop selection
+   - Crop selected PDF region
+   - Add cropped region as question
+   - Question thumbnail
+   - Subject field
+   - Correct answer field
    ========================================================= */
 
 
 /* =========================================================
-   PDF.JS SETUP
+   PDF.JS
    ========================================================= */
-
-/*
- * index.html loads PDF.js as an ES module.
- *
- * Because PDF.js is loaded from a CDN as a module, we dynamically
- * import it here as well. This gives us access to:
- *
- *   getDocument()
- *
- * The worker is configured after PDF.js loads.
- */
 
 let pdfjsLib = null;
 
@@ -60,6 +47,7 @@ const appState = {
         optionCount: 4,
         subjectOrder:
             "Physics, Chemistry, Botany, Zoology",
+
         instructions:
             "1. Read each question carefully before answering.\n" +
             "2. Select the most appropriate option.\n" +
@@ -76,21 +64,18 @@ const appState = {
 
 const elements = {
 
-    /* PDF upload */
     pdfInput:
         document.getElementById("pdfInput"),
 
     dropZone:
         document.getElementById("dropZone"),
 
-    /* PDF information */
     pdfFileName:
         document.getElementById("pdfFileName"),
 
     pdfPageInfo:
         document.getElementById("pdfPageInfo"),
 
-    /* PDF controls */
     prevPageBtn:
         document.getElementById("prevPageBtn"),
 
@@ -106,7 +91,6 @@ const elements = {
     zoomLevel:
         document.getElementById("zoomLevel"),
 
-    /* PDF canvas */
     pdfViewport:
         document.getElementById("pdfViewport"),
 
@@ -122,7 +106,6 @@ const elements = {
     selectionOverlay:
         document.getElementById("selectionOverlay"),
 
-    /* Crop */
     selectionStatus:
         document.getElementById("selectionStatus"),
 
@@ -132,7 +115,6 @@ const elements = {
     addQuestionBtn:
         document.getElementById("addQuestionBtn"),
 
-    /* Questions */
     questionCount:
         document.getElementById("questionCount"),
 
@@ -145,7 +127,6 @@ const elements = {
     questionList:
         document.getElementById("questionList"),
 
-    /* Settings */
     settingsForm:
         document.getElementById("settingsForm"),
 
@@ -170,14 +151,12 @@ const elements = {
     instructions:
         document.getElementById("instructions"),
 
-    /* Export */
     exportExamBtn:
         document.getElementById("exportExamBtn"),
 
     exportWarning:
         document.getElementById("exportWarning"),
 
-    /* Project */
     saveProjectBtn:
         document.getElementById("saveProjectBtn"),
 
@@ -187,7 +166,6 @@ const elements = {
     projectFileInput:
         document.getElementById("projectFileInput"),
 
-    /* UI */
     toastContainer:
         document.getElementById("toastContainer"),
 
@@ -212,6 +190,38 @@ const elements = {
     modalConfirmBtn:
         document.getElementById("modalConfirmBtn")
 };
+
+
+/* =========================================================
+   CROP STATE
+   ========================================================= */
+
+const cropState = {
+
+    active: false,
+
+    startX: 0,
+    startY: 0,
+
+    currentX: 0,
+    currentY: 0,
+
+    width: 0,
+    height: 0,
+
+    pointerId: null
+
+};
+
+
+/*
+ * Minimum crop dimensions.
+ *
+ * Accidental clicks or tiny selections are ignored.
+ */
+
+const MIN_CROP_WIDTH = 15;
+const MIN_CROP_HEIGHT = 15;
 
 
 /* =========================================================
@@ -261,25 +271,18 @@ async function initializeApp() {
 
 async function loadPdfJs() {
 
-    /*
-     * PDF.js is imported dynamically.
-     *
-     * This URL matches the module version loaded in index.html.
-     */
-
     const moduleUrl =
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs";
 
     try {
 
-        pdfjsLib = await import(moduleUrl);
+        pdfjsLib =
+            await import(moduleUrl);
 
-        /*
-         * PDF.js requires a worker for rendering.
-         */
 
         pdfjsLib.GlobalWorkerOptions.workerSrc =
             "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
+
 
     } catch (error) {
 
@@ -304,9 +307,7 @@ async function loadPdfJs() {
 
 function bindEvents() {
 
-    /* -------------------------------------------------------
-       PDF INPUT
-       ------------------------------------------------------- */
+    /* PDF upload */
 
     elements.pdfInput.addEventListener(
         "change",
@@ -314,9 +315,7 @@ function bindEvents() {
     );
 
 
-    /* -------------------------------------------------------
-       DRAG & DROP
-       ------------------------------------------------------- */
+    /* Drag and drop */
 
     elements.dropZone.addEventListener(
         "dragover",
@@ -334,9 +333,7 @@ function bindEvents() {
     );
 
 
-    /* -------------------------------------------------------
-       PAGE NAVIGATION
-       ------------------------------------------------------- */
+    /* Page navigation */
 
     elements.prevPageBtn.addEventListener(
         "click",
@@ -349,9 +346,7 @@ function bindEvents() {
     );
 
 
-    /* -------------------------------------------------------
-       ZOOM
-       ------------------------------------------------------- */
+    /* Zoom */
 
     elements.zoomOutBtn.addEventListener(
         "click",
@@ -364,9 +359,51 @@ function bindEvents() {
     );
 
 
-    /* -------------------------------------------------------
-       SETTINGS
-       ------------------------------------------------------- */
+    /* Crop button */
+
+    elements.addQuestionBtn.addEventListener(
+        "click",
+        addSelectedRegionAsQuestion
+    );
+
+
+    /*
+     * Pointer events are used instead of separate mouse and
+     * touch listeners.
+     *
+     * Pointer events work with:
+     * - mouse
+     * - touchscreen
+     * - stylus
+     */
+
+    elements.pdfCanvas.addEventListener(
+        "pointerdown",
+        handleCropPointerDown
+    );
+
+    elements.pdfCanvas.addEventListener(
+        "pointermove",
+        handleCropPointerMove
+    );
+
+    elements.pdfCanvas.addEventListener(
+        "pointerup",
+        handleCropPointerUp
+    );
+
+    elements.pdfCanvas.addEventListener(
+        "pointercancel",
+        handleCropPointerCancel
+    );
+
+    elements.pdfCanvas.addEventListener(
+        "pointerleave",
+        handleCropPointerLeave
+    );
+
+
+    /* Settings */
 
     elements.settingsForm.addEventListener(
         "input",
@@ -379,9 +416,7 @@ function bindEvents() {
     );
 
 
-    /* -------------------------------------------------------
-       PROJECT BUTTONS
-       ------------------------------------------------------- */
+    /* Project */
 
     elements.saveProjectBtn.addEventListener(
         "click",
@@ -401,17 +436,7 @@ function bindEvents() {
     );
 
 
-    /* -------------------------------------------------------
-       PLACEHOLDER BUTTONS
-       -------------------------------------------------------
-       These features are implemented in later steps.
-       We keep the buttons safe for now.
-       ------------------------------------------------------- */
-
-    elements.addQuestionBtn.addEventListener(
-        "click",
-        handleAddQuestionPlaceholder
-    );
+    /* Export placeholder */
 
     elements.exportExamBtn.addEventListener(
         "click",
@@ -419,9 +444,7 @@ function bindEvents() {
     );
 
 
-    /* -------------------------------------------------------
-       MODAL
-       ------------------------------------------------------- */
+    /* Modal */
 
     elements.modalCancelBtn.addEventListener(
         "click",
@@ -431,7 +454,7 @@ function bindEvents() {
 
 
 /* =========================================================
-   PDF FILE INPUT
+   PDF INPUT
    ========================================================= */
 
 async function handlePdfInput(event) {
@@ -446,10 +469,6 @@ async function handlePdfInput(event) {
 
     await loadPdfFile(file);
 
-    /*
-     * Reset input so the same PDF can be selected again later.
-     */
-
     event.target.value = "";
 }
 
@@ -462,7 +481,8 @@ function handleDragOver(event) {
 
     event.preventDefault();
 
-    event.dataTransfer.dropEffect = "copy";
+    event.dataTransfer.dropEffect =
+        "copy";
 
     elements.dropZone.classList.add(
         "drag-over"
@@ -496,21 +516,27 @@ async function handleDrop(event) {
         "drag-over"
     );
 
+
     const files =
         event.dataTransfer.files;
 
-    if (!files || files.length === 0) {
+
+    if (
+        !files ||
+        files.length === 0
+    ) {
         return;
     }
 
-    const file = files[0];
 
-    await loadPdfFile(file);
+    await loadPdfFile(
+        files[0]
+    );
 }
 
 
 /* =========================================================
-   LOAD PDF FILE
+   LOAD PDF
    ========================================================= */
 
 async function loadPdfFile(file) {
@@ -520,15 +546,13 @@ async function loadPdfFile(file) {
     }
 
 
-    /* -------------------------------------------------------
-       FILE TYPE CHECK
-       ------------------------------------------------------- */
-
     const isPdf =
-        file.type === "application/pdf" ||
+        file.type ===
+            "application/pdf" ||
         file.name
             .toLowerCase()
             .endsWith(".pdf");
+
 
     if (!isPdf) {
 
@@ -541,15 +565,10 @@ async function loadPdfFile(file) {
     }
 
 
-    /* -------------------------------------------------------
-       FILE SIZE CHECK
-       -------------------------------------------------------
-       Large PDFs can consume a lot of browser memory.
-       We allow them, but warn above 100 MB.
-       ------------------------------------------------------- */
-
     const fileSizeMB =
-        file.size / (1024 * 1024);
+        file.size /
+        (1024 * 1024);
+
 
     if (fileSizeMB > 100) {
 
@@ -577,61 +596,56 @@ async function loadPdfFile(file) {
             "Opening question paper..."
         );
 
-        /*
-         * Convert File to ArrayBuffer.
-         */
 
         const arrayBuffer =
             await file.arrayBuffer();
 
 
-        /*
-         * PDF.js accepts typed array data.
-         *
-         * Uint8Array avoids keeping an unnecessary duplicate
-         * representation around.
-         */
-
         const pdfData =
-            new Uint8Array(arrayBuffer);
+            new Uint8Array(
+                arrayBuffer
+            );
 
-
-        /*
-         * Load PDF document.
-         */
 
         const loadingTask =
             pdfjsLib.getDocument({
                 data: pdfData
             });
 
+
         pdfDocument =
             await loadingTask.promise;
 
 
         currentPdfFile = {
-            name: file.name,
-            size: file.size,
-            type: file.type
+
+            name:
+                file.name,
+
+            size:
+                file.size,
+
+            type:
+                file.type
         };
 
 
         currentPageNumber = 1;
+
         currentScale = 1.0;
 
-
-        /*
-         * Update UI.
-         */
 
         elements.pdfFileName.textContent =
             file.name;
 
+
         elements.pdfPageInfo.textContent =
             `Page 1 of ${pdfDocument.numPages}`;
 
+
         elements.pdfEmptyState.hidden =
             true;
+
 
         elements.canvasWrapper.hidden =
             false;
@@ -641,10 +655,6 @@ async function loadPdfFile(file) {
 
         updateZoomDisplay();
 
-
-        /*
-         * Render first page.
-         */
 
         await renderCurrentPage();
 
@@ -657,6 +667,7 @@ async function loadPdfFile(file) {
             "success"
         );
 
+
     } catch (error) {
 
         hideLoading();
@@ -666,24 +677,16 @@ async function loadPdfFile(file) {
             error
         );
 
+
         pdfDocument = null;
         currentPdfFile = null;
 
+
         resetPdfViewer();
 
-        let message =
-            "Could not open this PDF.";
-
-        if (
-            error &&
-            typeof error.message === "string"
-        ) {
-            message =
-                `Could not open this PDF: ${error.message}`;
-        }
 
         showToast(
-            message,
+            "Could not open this PDF. Please make sure it is a valid PDF file.",
             "error"
         );
     }
@@ -700,6 +703,7 @@ async function renderCurrentPage() {
         return;
     }
 
+
     try {
 
         showLoading(
@@ -713,12 +717,6 @@ async function renderCurrentPage() {
             );
 
 
-        /*
-         * PDF.js uses points internally.
-         *
-         * currentScale controls the rendered pixel size.
-         */
-
         const viewport =
             page.getViewport({
                 scale: currentScale
@@ -728,15 +726,15 @@ async function renderCurrentPage() {
         const canvas =
             elements.pdfCanvas;
 
+
         const context =
-            canvas.getContext("2d", {
-                alpha: false
-            });
+            canvas.getContext(
+                "2d",
+                {
+                    alpha: false
+                }
+            );
 
-
-        /*
-         * Clear any previous drawing.
-         */
 
         context.clearRect(
             0,
@@ -746,44 +744,36 @@ async function renderCurrentPage() {
         );
 
 
-        /*
-         * Set actual canvas resolution.
-         */
-
         canvas.width =
-            Math.floor(viewport.width);
+            Math.floor(
+                viewport.width
+            );
+
 
         canvas.height =
-            Math.floor(viewport.height);
+            Math.floor(
+                viewport.height
+            );
 
-
-        /*
-         * CSS dimensions match canvas dimensions.
-         *
-         * This is important because crop coordinates will later
-         * be calculated from the actual rendered canvas.
-         */
 
         canvas.style.width =
             `${Math.floor(viewport.width)}px`;
+
 
         canvas.style.height =
             `${Math.floor(viewport.height)}px`;
 
 
-        /*
-         * Render PDF page onto canvas.
-         */
-
         await page.render({
-            canvasContext: context,
-            viewport: viewport
+
+            canvasContext:
+                context,
+
+            viewport:
+                viewport
+
         }).promise;
 
-
-        /*
-         * Update page information.
-         */
 
         elements.pdfPageInfo.textContent =
             `Page ${currentPageNumber} of ${pdfDocument.numPages}`;
@@ -795,7 +785,7 @@ async function renderCurrentPage() {
 
 
         /*
-         * A new page invalidates an existing crop selection.
+         * Any page/zoom change invalidates an old selection.
          */
 
         clearSelection();
@@ -808,10 +798,12 @@ async function renderCurrentPage() {
             error
         );
 
+
         showToast(
             "Could not render this PDF page.",
             "error"
         );
+
 
     } finally {
 
@@ -821,7 +813,7 @@ async function renderCurrentPage() {
 
 
 /* =========================================================
-   CHANGE PAGE
+   PAGE NAVIGATION
    ========================================================= */
 
 async function changePage(direction) {
@@ -832,12 +824,14 @@ async function changePage(direction) {
 
 
     const newPage =
-        currentPageNumber + direction;
+        currentPageNumber +
+        direction;
 
 
     if (
         newPage < 1 ||
-        newPage > pdfDocument.numPages
+        newPage >
+            pdfDocument.numPages
     ) {
         return;
     }
@@ -852,7 +846,7 @@ async function changePage(direction) {
 
 
 /* =========================================================
-   CHANGE ZOOM
+   ZOOM
    ========================================================= */
 
 async function changeZoom(delta) {
@@ -865,19 +859,25 @@ async function changeZoom(delta) {
     const minimumScale =
         0.5;
 
+
     const maximumScale =
         3.0;
 
 
     const newScale =
         Math.round(
-            (currentScale + delta) * 10
+            (
+                currentScale +
+                delta
+            ) * 10
         ) / 10;
 
 
     if (
-        newScale < minimumScale ||
-        newScale > maximumScale
+        newScale <
+            minimumScale ||
+        newScale >
+            maximumScale
     ) {
         return;
     }
@@ -892,7 +892,7 @@ async function changeZoom(delta) {
 
 
 /* =========================================================
-   PDF CONTROLS
+   PDF CONTROL STATE
    ========================================================= */
 
 function updatePdfControls() {
@@ -909,7 +909,10 @@ function updatePdfControls() {
     elements.nextPageBtn.disabled =
         !hasPdf ||
         currentPageNumber >=
-        pdfDocument?.numPages;
+            (
+                pdfDocument?.numPages ||
+                1
+            );
 
 
     elements.zoomOutBtn.disabled =
@@ -934,6 +937,7 @@ function updateZoomDisplay() {
             currentScale * 100
         );
 
+
     elements.zoomLevel.textContent =
         `${percentage}%`;
 }
@@ -955,8 +959,10 @@ function resetPdfViewer() {
     const canvas =
         elements.pdfCanvas;
 
+
     const context =
         canvas.getContext("2d");
+
 
     context.clearRect(
         0,
@@ -973,6 +979,7 @@ function resetPdfViewer() {
     elements.pdfEmptyState.hidden =
         false;
 
+
     elements.canvasWrapper.hidden =
         true;
 
@@ -980,11 +987,13 @@ function resetPdfViewer() {
     elements.pdfFileName.textContent =
         "No PDF loaded";
 
+
     elements.pdfPageInfo.textContent =
         "Page 0 of 0";
 
 
     updatePdfControls();
+
     updateZoomDisplay();
 
     clearSelection();
@@ -992,27 +1001,530 @@ function resetPdfViewer() {
 
 
 /* =========================================================
-   SELECTION — PLACEHOLDER
-   =========================================================
-   The actual mouse/touch crop selection is implemented
-   in the next step.
+   CROP POINTER DOWN
+   ========================================================= */
 
-   We keep this function now so the UI can safely reset.
+function handleCropPointerDown(event) {
+
+    if (!pdfDocument) {
+        return;
+    }
+
+
+    /*
+     * Only the primary pointer should start a selection.
+     */
+
+    if (
+        event.isPrimary === false
+    ) {
+        return;
+    }
+
+
+    event.preventDefault();
+
+
+    const point =
+        getCanvasPointerPosition(
+            event
+        );
+
+
+    if (!point) {
+        return;
+    }
+
+
+    cropState.active =
+        true;
+
+
+    cropState.pointerId =
+        event.pointerId;
+
+
+    cropState.startX =
+        point.x;
+
+
+    cropState.startY =
+        point.y;
+
+
+    cropState.currentX =
+        point.x;
+
+
+    cropState.currentY =
+        point.y;
+
+
+    cropState.width = 0;
+
+    cropState.height = 0;
+
+
+    /*
+     * Capture the pointer so selection continues even if
+     * the pointer briefly leaves the canvas.
+     */
+
+    try {
+
+        elements.pdfCanvas.setPointerCapture(
+            event.pointerId
+        );
+
+    } catch (error) {
+
+        /*
+         * Pointer capture is not available in some older browsers.
+         * It is not required for the selection to work.
+         */
+
+        console.debug(
+            "Pointer capture unavailable."
+        );
+    }
+
+
+    elements.pdfCanvas.classList.add(
+        "is-cropping"
+    );
+
+
+    updateSelectionRectangle();
+}
+
+
+/* =========================================================
+   CROP POINTER MOVE
+   ========================================================= */
+
+function handleCropPointerMove(event) {
+
+    if (
+        !cropState.active ||
+        event.pointerId !==
+            cropState.pointerId
+    ) {
+        return;
+    }
+
+
+    event.preventDefault();
+
+
+    const point =
+        getCanvasPointerPosition(
+            event
+        );
+
+
+    if (!point) {
+        return;
+    }
+
+
+    cropState.currentX =
+        point.x;
+
+
+    cropState.currentY =
+        point.y;
+
+
+    updateSelectionRectangle();
+}
+
+
+/* =========================================================
+   CROP POINTER UP
+   ========================================================= */
+
+function handleCropPointerUp(event) {
+
+    if (
+        !cropState.active ||
+        event.pointerId !==
+            cropState.pointerId
+    ) {
+        return;
+    }
+
+
+    event.preventDefault();
+
+
+    const point =
+        getCanvasPointerPosition(
+            event
+        );
+
+
+    if (point) {
+
+        cropState.currentX =
+            point.x;
+
+        cropState.currentY =
+            point.y;
+    }
+
+
+    cropState.active =
+        false;
+
+
+    try {
+
+        elements.pdfCanvas.releasePointerCapture(
+            event.pointerId
+        );
+
+    } catch (error) {
+
+        /*
+         * Safe to ignore.
+         */
+    }
+
+
+    elements.pdfCanvas.classList.remove(
+        "is-cropping"
+    );
+
+
+    finalizeSelection();
+}
+
+
+/* =========================================================
+   CROP POINTER CANCEL
+   ========================================================= */
+
+function handleCropPointerCancel(event) {
+
+    if (
+        event.pointerId !==
+        cropState.pointerId
+    ) {
+        return;
+    }
+
+
+    cancelCropSelection();
+}
+
+
+/* =========================================================
+   CROP POINTER LEAVE
+   ========================================================= */
+
+function handleCropPointerLeave(event) {
+
+    /*
+     * Do not cancel the selection.
+     *
+     * Pointer capture normally keeps the selection alive.
+     */
+}
+
+
+/* =========================================================
+   CANCEL CROP
+   ========================================================= */
+
+function cancelCropSelection() {
+
+    cropState.active =
+        false;
+
+
+    cropState.pointerId =
+        null;
+
+
+    elements.pdfCanvas.classList.remove(
+        "is-cropping"
+    );
+
+
+    clearSelection();
+}
+
+
+/* =========================================================
+   GET POINTER POSITION
+   ========================================================= */
+
+function getCanvasPointerPosition(event) {
+
+    const canvas =
+        elements.pdfCanvas;
+
+
+    const rect =
+        canvas.getBoundingClientRect();
+
+
+    if (
+        !rect.width ||
+        !rect.height
+    ) {
+        return null;
+    }
+
+
+    /*
+     * CSS size and actual canvas pixel size may differ.
+     *
+     * Convert screen coordinates into actual canvas coordinates.
+     */
+
+    const scaleX =
+        canvas.width /
+        rect.width;
+
+
+    const scaleY =
+        canvas.height /
+        rect.height;
+
+
+    let x =
+        (event.clientX -
+            rect.left) *
+        scaleX;
+
+
+    let y =
+        (event.clientY -
+            rect.top) *
+        scaleY;
+
+
+    /*
+     * Clamp coordinates to canvas boundaries.
+     */
+
+    x =
+        Math.max(
+            0,
+            Math.min(
+                canvas.width,
+                x
+            )
+        );
+
+
+    y =
+        Math.max(
+            0,
+            Math.min(
+                canvas.height,
+                y
+            )
+        );
+
+
+    return {
+        x,
+        y
+    };
+}
+
+
+/* =========================================================
+   UPDATE SELECTION RECTANGLE
+   ========================================================= */
+
+function updateSelectionRectangle() {
+
+    const x1 =
+        cropState.startX;
+
+
+    const y1 =
+        cropState.startY;
+
+
+    const x2 =
+        cropState.currentX;
+
+
+    const y2 =
+        cropState.currentY;
+
+
+    const left =
+        Math.min(
+            x1,
+            x2
+        );
+
+
+    const top =
+        Math.min(
+            y1,
+            y2
+        );
+
+
+    const width =
+        Math.abs(
+            x2 - x1
+        );
+
+
+    const height =
+        Math.abs(
+            y2 - y1
+        );
+
+
+    cropState.width =
+        width;
+
+
+    cropState.height =
+        height;
+
+
+    /*
+     * The overlay is positioned relative to canvasWrapper.
+     *
+     * The canvas itself begins at 0,0 inside the wrapper.
+     */
+
+    elements.selectionOverlay.hidden =
+        false;
+
+
+    elements.selectionOverlay.style.left =
+        `${left}px`;
+
+
+    elements.selectionOverlay.style.top =
+        `${top}px`;
+
+
+    elements.selectionOverlay.style.width =
+        `${width}px`;
+
+
+    elements.selectionOverlay.style.height =
+        `${height}px`;
+
+
+    if (
+        width >= MIN_CROP_WIDTH &&
+        height >= MIN_CROP_HEIGHT
+    ) {
+
+        elements.selectionStatus.textContent =
+            `${Math.round(width)} × ${Math.round(height)} px selected — ready to add`;
+
+
+        elements.selectionStatusDot.classList.add(
+            "active"
+        );
+
+
+        elements.addQuestionBtn.disabled =
+            false;
+
+    } else {
+
+        elements.selectionStatus.textContent =
+            "Keep dragging to select the complete question";
+
+
+        elements.selectionStatusDot.classList.remove(
+            "active"
+        );
+
+
+        elements.addQuestionBtn.disabled =
+            true;
+    }
+}
+
+
+/* =========================================================
+   FINALIZE SELECTION
+   ========================================================= */
+
+function finalizeSelection() {
+
+    const width =
+        cropState.width;
+
+
+    const height =
+        cropState.height;
+
+
+    if (
+        width < MIN_CROP_WIDTH ||
+        height < MIN_CROP_HEIGHT
+    ) {
+
+        showToast(
+            "Selection is too small. Drag around the complete question.",
+            "warning"
+        );
+
+
+        clearSelection();
+
+        return;
+    }
+
+
+    updateSelectionRectangle();
+}
+
+
+/* =========================================================
+   CLEAR SELECTION
    ========================================================= */
 
 function clearSelection() {
 
+    cropState.active =
+        false;
+
+
+    cropState.pointerId =
+        null;
+
+
+    cropState.startX = 0;
+    cropState.startY = 0;
+    cropState.currentX = 0;
+    cropState.currentY = 0;
+
+    cropState.width = 0;
+    cropState.height = 0;
+
+
     elements.selectionOverlay.hidden =
         true;
+
 
     elements.selectionOverlay.style.left =
         "0px";
 
+
     elements.selectionOverlay.style.top =
         "0px";
 
+
     elements.selectionOverlay.style.width =
         "0px";
+
 
     elements.selectionOverlay.style.height =
         "0px";
@@ -1021,6 +1533,7 @@ function clearSelection() {
     elements.selectionStatus.textContent =
         "Select a question region on the page";
 
+
     elements.selectionStatusDot.classList.remove(
         "active"
     );
@@ -1028,6 +1541,942 @@ function clearSelection() {
 
     elements.addQuestionBtn.disabled =
         true;
+
+
+    elements.pdfCanvas.classList.remove(
+        "is-cropping"
+    );
+}
+
+
+/* =========================================================
+   CROP SELECTED REGION
+   ========================================================= */
+
+function cropSelectedRegion() {
+
+    if (!pdfDocument) {
+
+        throw new Error(
+            "No PDF page is loaded."
+        );
+    }
+
+
+    const canvas =
+        elements.pdfCanvas;
+
+
+    const x =
+        Math.min(
+            cropState.startX,
+            cropState.currentX
+        );
+
+
+    const y =
+        Math.min(
+            cropState.startY,
+            cropState.currentY
+        );
+
+
+    const width =
+        Math.abs(
+            cropState.currentX -
+            cropState.startX
+        );
+
+
+    const height =
+        Math.abs(
+            cropState.currentY -
+            cropState.startY
+        );
+
+
+    if (
+        width < MIN_CROP_WIDTH ||
+        height < MIN_CROP_HEIGHT
+    ) {
+
+        throw new Error(
+            "The selected region is too small."
+        );
+    }
+
+
+    /*
+     * Extra safety:
+     * Make sure the crop remains inside the canvas.
+     */
+
+    const safeX =
+        Math.max(
+            0,
+            Math.min(
+                canvas.width,
+                x
+            )
+        );
+
+
+    const safeY =
+        Math.max(
+            0,
+            Math.min(
+                canvas.height,
+                y
+            )
+        );
+
+
+    const safeWidth =
+        Math.min(
+            width,
+            canvas.width - safeX
+        );
+
+
+    const safeHeight =
+        Math.min(
+            height,
+            canvas.height - safeY
+        );
+
+
+    if (
+        safeWidth < MIN_CROP_WIDTH ||
+        safeHeight < MIN_CROP_HEIGHT
+    ) {
+
+        throw new Error(
+            "The selected region is outside the page."
+        );
+    }
+
+
+    /*
+     * Create a second canvas.
+     *
+     * This is the actual crop canvas.
+     */
+
+    const cropCanvas =
+        document.createElement(
+            "canvas"
+        );
+
+
+    cropCanvas.width =
+        Math.round(
+            safeWidth
+        );
+
+
+    cropCanvas.height =
+        Math.round(
+            safeHeight
+        );
+
+
+    const cropContext =
+        cropCanvas.getContext(
+            "2d"
+        );
+
+
+    /*
+     * White background.
+     *
+     * This avoids transparent backgrounds in the resulting
+     * question image.
+     */
+
+    cropContext.fillStyle =
+        "#ffffff";
+
+
+    cropContext.fillRect(
+        0,
+        0,
+        cropCanvas.width,
+        cropCanvas.height
+    );
+
+
+    /*
+     * Copy exact pixels from the rendered PDF canvas.
+     */
+
+    cropContext.drawImage(
+
+        canvas,
+
+        safeX,
+        safeY,
+        safeWidth,
+        safeHeight,
+
+        0,
+        0,
+        cropCanvas.width,
+        cropCanvas.height
+
+    );
+
+
+    /*
+     * Convert crop to base64 data URL.
+     *
+     * This makes the question image completely portable.
+     */
+
+    return cropCanvas.toDataURL(
+        "image/png"
+    );
+}
+
+
+/* =========================================================
+   ADD SELECTED REGION AS QUESTION
+   ========================================================= */
+
+function addSelectedRegionAsQuestion() {
+
+    if (!pdfDocument) {
+
+        showToast(
+            "Load a PDF before adding a question.",
+            "warning"
+        );
+
+        return;
+    }
+
+
+    if (
+        cropState.width <
+            MIN_CROP_WIDTH ||
+        cropState.height <
+            MIN_CROP_HEIGHT
+    ) {
+
+        showToast(
+            "Select a question region first.",
+            "warning"
+        );
+
+        return;
+    }
+
+
+    try {
+
+        showLoading(
+            "Creating question image..."
+        );
+
+
+        const imageData =
+            cropSelectedRegion();
+
+
+        const question =
+            createQuestion(
+                imageData
+            );
+
+
+        appState.questions.push(
+            question
+        );
+
+
+        renderQuestionList();
+
+        updateQuestionCounters();
+
+
+        clearSelection();
+
+
+        hideLoading();
+
+
+        showToast(
+            `Question ${appState.questions.length} added.`,
+            "success"
+        );
+
+
+    } catch (error) {
+
+        hideLoading();
+
+        console.error(
+            "Question crop failed:",
+            error
+        );
+
+
+        showToast(
+            error.message ||
+            "Could not crop this question.",
+            "error"
+        );
+    }
+}
+
+
+/* =========================================================
+   CREATE QUESTION OBJECT
+   ========================================================= */
+
+function createQuestion(
+    imageData
+) {
+
+    return {
+
+        id:
+            createQuestionId(),
+
+        image:
+            imageData,
+
+        subject:
+            getDefaultSubject(),
+
+        correctAnswer:
+            "",
+
+        page:
+            currentPageNumber,
+
+        crop: {
+
+            x:
+                Math.round(
+                    Math.min(
+                        cropState.startX,
+                        cropState.currentX
+                    )
+                ),
+
+            y:
+                Math.round(
+                    Math.min(
+                        cropState.startY,
+                        cropState.currentY
+                    )
+                ),
+
+            width:
+                Math.round(
+                    cropState.width
+                ),
+
+            height:
+                Math.round(
+                    cropState.height
+                )
+        }
+    };
+}
+
+
+/* =========================================================
+   DEFAULT SUBJECT
+   ========================================================= */
+
+function getDefaultSubject() {
+
+    const subjects =
+        getSubjectOrder();
+
+
+    if (
+        subjects.length > 0
+    ) {
+        return subjects[0];
+    }
+
+
+    return "General";
+}
+
+
+/* =========================================================
+   QUESTION ID
+   ========================================================= */
+
+function createQuestionId() {
+
+    return (
+        "q-" +
+        Date.now().toString(36) +
+        "-" +
+        Math.random()
+            .toString(36)
+            .slice(2, 8)
+    );
+}
+
+
+/* =========================================================
+   SUBJECT ORDER
+   ========================================================= */
+
+function getSubjectOrder() {
+
+    return elements.subjectOrder.value
+        .split(",")
+        .map(
+            item =>
+                item.trim()
+        )
+        .filter(Boolean);
+}
+
+
+/* =========================================================
+   RENDER QUESTION LIST
+   ========================================================= */
+
+function renderQuestionList() {
+
+    const questions =
+        appState.questions;
+
+
+    if (
+        questions.length === 0
+    ) {
+
+        elements.questionList.innerHTML = `
+            <div class="empty-state">
+
+                <div class="empty-state-icon">
+                    ?
+                </div>
+
+                <strong>
+                    No questions yet
+                </strong>
+
+                <p>
+                    Upload a PDF, select a question area,
+                    and add it here.
+                </p>
+
+            </div>
+        `;
+
+        return;
+    }
+
+
+    elements.questionList.innerHTML =
+        questions
+            .map(
+                (
+                    question,
+                    index
+                ) =>
+                    createQuestionCardHtml(
+                        question,
+                        index
+                    )
+            )
+            .join("");
+
+
+    bindQuestionCardEvents();
+}
+
+
+/* =========================================================
+   QUESTION CARD HTML
+   ========================================================= */
+
+function createQuestionCardHtml(
+    question,
+    index
+) {
+
+    const optionCount =
+        appState.settings.optionCount;
+
+
+    const options =
+        createOptionLetters(
+            optionCount
+        );
+
+
+    const answerOptions =
+        options
+            .map(
+                letter => `
+                    <option
+                        value="${letter}"
+                        ${
+                            question.correctAnswer ===
+                            letter
+                                ? "selected"
+                                : ""
+                        }
+                    >
+                        ${letter}
+                    </option>
+                `
+            )
+            .join("");
+
+
+    return `
+        <article
+            class="question-card"
+            data-question-id="${escapeHtml(question.id)}"
+        >
+
+            <div class="question-card-top">
+
+                <div class="question-number">
+                    ${index + 1}
+                </div>
+
+                <div>
+                    <span class="eyebrow">
+                        PAGE ${question.page || "—"}
+                    </span>
+                </div>
+
+                <div class="question-card-actions">
+
+                    <button
+                        type="button"
+                        class="question-action move-up"
+                        data-question-id="${escapeHtml(question.id)}"
+                        title="Move up"
+                        ${
+                            index === 0
+                                ? "disabled"
+                                : ""
+                        }
+                    >
+                        ↑
+                    </button>
+
+                    <button
+                        type="button"
+                        class="question-action move-down"
+                        data-question-id="${escapeHtml(question.id)}"
+                        title="Move down"
+                        ${
+                            index === questionsLength() - 1
+                                ? "disabled"
+                                : ""
+                        }
+                    >
+                        ↓
+                    </button>
+
+                    <button
+                        type="button"
+                        class="question-action delete"
+                        data-question-id="${escapeHtml(question.id)}"
+                        title="Delete question"
+                    >
+                        ×
+                    </button>
+
+                </div>
+
+            </div>
+
+
+            <div class="question-thumbnail">
+
+                <img
+                    src="${question.image}"
+                    alt="Question ${index + 1} cropped preview"
+                    loading="lazy"
+                >
+
+            </div>
+
+
+            <div class="question-fields">
+
+                <div class="mini-field">
+
+                    <label
+                        for="subject-${escapeHtml(question.id)}"
+                    >
+                        Subject
+                    </label>
+
+                    <input
+                        id="subject-${escapeHtml(question.id)}"
+                        type="text"
+                        class="question-subject"
+                        data-question-id="${escapeHtml(question.id)}"
+                        value="${escapeHtml(question.subject)}"
+                        placeholder="Physics"
+                    >
+
+                </div>
+
+
+                <div class="mini-field">
+
+                    <label
+                        for="answer-${escapeHtml(question.id)}"
+                    >
+                        Answer
+                    </label>
+
+                    <select
+                        id="answer-${escapeHtml(question.id)}"
+                        class="question-answer"
+                        data-question-id="${escapeHtml(question.id)}"
+                    >
+
+                        <option value="">
+                            —
+                        </option>
+
+                        ${answerOptions}
+
+                    </select>
+
+                </div>
+
+            </div>
+
+        </article>
+    `;
+}
+
+
+/* =========================================================
+   QUESTION COUNT
+   ========================================================= */
+
+function questionsLength() {
+
+    return appState.questions.length;
+}
+
+
+/* =========================================================
+   OPTION LETTERS
+   ========================================================= */
+
+function createOptionLetters(
+    count
+) {
+
+    const letters =
+        [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E"
+        ];
+
+
+    return letters.slice(
+        0,
+        count
+    );
+}
+
+
+/* =========================================================
+   QUESTION CARD EVENTS
+   ========================================================= */
+
+function bindQuestionCardEvents() {
+
+    /*
+     * Subject fields
+     */
+
+    document
+        .querySelectorAll(
+            ".question-subject"
+        )
+        .forEach(
+            input => {
+
+                input.addEventListener(
+                    "input",
+                    event => {
+
+                        const id =
+                            event.target.dataset.questionId;
+
+
+                        const question =
+                            findQuestionById(
+                                id
+                            );
+
+
+                        if (!question) {
+                            return;
+                        }
+
+
+                        question.subject =
+                            event.target.value;
+
+
+                        updateQuestionCounters();
+                    }
+                );
+            }
+        );
+
+
+    /*
+     * Correct answer fields
+     */
+
+    document
+        .querySelectorAll(
+            ".question-answer"
+        )
+        .forEach(
+            select => {
+
+                select.addEventListener(
+                    "change",
+                    event => {
+
+                        const id =
+                            event.target.dataset.questionId;
+
+
+                        const question =
+                            findQuestionById(
+                                id
+                            );
+
+
+                        if (!question) {
+                            return;
+                        }
+
+
+                        question.correctAnswer =
+                            event.target.value;
+
+
+                        updateQuestionCounters();
+                    }
+                );
+            }
+        );
+
+
+    /*
+     * Move up
+     */
+
+    document
+        .querySelectorAll(
+            ".move-up"
+        )
+        .forEach(
+            button => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        moveQuestion(
+                            button.dataset.questionId,
+                            -1
+                        );
+                    }
+                );
+            }
+        );
+
+
+    /*
+     * Move down
+     */
+
+    document
+        .querySelectorAll(
+            ".move-down"
+        )
+        .forEach(
+            button => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        moveQuestion(
+                            button.dataset.questionId,
+                            1
+                        );
+                    }
+                );
+            }
+        );
+
+
+    /*
+     * Delete
+     */
+
+    document
+        .querySelectorAll(
+            ".question-action.delete"
+        )
+        .forEach(
+            button => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        deleteQuestion(
+                            button.dataset.questionId
+                        );
+                    }
+                );
+            }
+        );
+}
+
+
+/* =========================================================
+   FIND QUESTION
+   ========================================================= */
+
+function findQuestionById(
+    id
+) {
+
+    return appState.questions.find(
+        question =>
+            question.id === id
+    );
+}
+
+
+/* =========================================================
+   MOVE QUESTION
+   ========================================================= */
+
+function moveQuestion(
+    id,
+    direction
+) {
+
+    const index =
+        appState.questions.findIndex(
+            question =>
+                question.id === id
+        );
+
+
+    if (index === -1) {
+        return;
+    }
+
+
+    const newIndex =
+        index + direction;
+
+
+    if (
+        newIndex < 0 ||
+        newIndex >=
+            appState.questions.length
+    ) {
+        return;
+    }
+
+
+    const questions =
+        appState.questions;
+
+
+    [
+        questions[index],
+        questions[newIndex]
+    ] =
+    [
+        questions[newIndex],
+        questions[index]
+    ];
+
+
+    renderQuestionList();
+
+    updateQuestionCounters();
+
+
+    showToast(
+        "Question order updated.",
+        "success"
+    );
+}
+
+
+/* =========================================================
+   DELETE QUESTION
+   ========================================================= */
+
+function deleteQuestion(
+    id
+) {
+
+    const question =
+        findQuestionById(id);
+
+
+    if (!question) {
+        return;
+    }
+
+
+    openModal(
+
+        "Delete question?",
+
+        "This will remove the cropped question from your project.",
+
+        () => {
+
+            appState.questions =
+                appState.questions.filter(
+                    item =>
+                        item.id !== id
+                );
+
+
+            renderQuestionList();
+
+            updateQuestionCounters();
+
+
+            showToast(
+                "Question deleted.",
+                "success"
+            );
+        }
+    );
 }
 
 
@@ -1039,13 +2488,20 @@ function handleSettingsChange() {
 
     syncSettingsFromForm();
 
-    updateExportWarning();
-
     /*
-     * Settings autosave will be added later.
+     * Option count can change the available answer letters.
+     * Re-render the cards so the dropdown stays synchronized.
      */
+
+    renderQuestionList();
+
+    updateQuestionCounters();
 }
 
+
+/* =========================================================
+   SYNC SETTINGS
+   ========================================================= */
 
 function syncSettingsFromForm() {
 
@@ -1091,7 +2547,7 @@ function syncSettingsFromForm() {
 
 
 /* =========================================================
-   NUMBER SANITIZERS
+   SANITIZERS
    ========================================================= */
 
 function sanitizePositiveNumber(
@@ -1102,12 +2558,14 @@ function sanitizePositiveNumber(
     const number =
         Number(value);
 
+
     if (
         !Number.isFinite(number) ||
         number <= 0
     ) {
         return fallback;
     }
+
 
     return number;
 }
@@ -1121,6 +2579,7 @@ function sanitizeNonNegativeNumber(
     const number =
         Number(value);
 
+
     if (
         !Number.isFinite(number) ||
         number < 0
@@ -1128,14 +2587,18 @@ function sanitizeNonNegativeNumber(
         return fallback;
     }
 
+
     return number;
 }
 
 
-function sanitizeOptionCount(value) {
+function sanitizeOptionCount(
+    value
+) {
 
     const number =
         Number(value);
+
 
     if (
         !Number.isInteger(number) ||
@@ -1144,6 +2607,7 @@ function sanitizeOptionCount(value) {
     ) {
         return 4;
     }
+
 
     return number;
 }
@@ -1166,7 +2630,9 @@ function updateQuestionCounters() {
     const keyedQuestions =
         questions.filter(
             question =>
-                question.correctAnswer
+                Boolean(
+                    question.correctAnswer
+                )
         );
 
 
@@ -1190,12 +2656,16 @@ function updateSubjectSummary() {
         appState.questions;
 
 
-    if (questions.length === 0) {
+    if (
+        questions.length === 0
+    ) {
 
         elements.subjectSummary.innerHTML =
-            `<span class="empty-summary">
-                Subject counts will appear here.
-            </span>`;
+            `
+                <span class="empty-summary">
+                    Subject counts will appear here.
+                </span>
+            `;
 
         return;
     }
@@ -1212,25 +2682,35 @@ function updateSubjectSummary() {
                 (
                     question.subject ||
                     "Unassigned"
-                ).trim();
+                ).trim() ||
+                "Unassigned";
 
 
-            if (!subjectCounts[subject]) {
-                subjectCounts[subject] = 0;
-            }
-
-            subjectCounts[subject]++;
+            subjectCounts[subject] =
+                (
+                    subjectCounts[subject] ||
+                    0
+                ) + 1;
         }
     );
 
 
     elements.subjectSummary.innerHTML =
-        Object.entries(subjectCounts)
+        Object.entries(
+            subjectCounts
+        )
             .map(
-                ([subject, count]) => `
+                (
+                    [
+                        subject,
+                        count
+                    ]
+                ) => `
                     <span class="subject-chip">
                         ${escapeHtml(subject)}
-                        <strong>${count}</strong>
+                        <strong>
+                            ${count}
+                        </strong>
                     </span>
                 `
             )
@@ -1244,11 +2724,9 @@ function updateSubjectSummary() {
 
 function updateExportWarning() {
 
-    const questionCount =
-        appState.questions.length;
-
-
-    if (questionCount === 0) {
+    if (
+        appState.questions.length === 0
+    ) {
 
         elements.exportWarning.hidden =
             true;
@@ -1264,15 +2742,19 @@ function updateExportWarning() {
         ).length;
 
 
-    if (missingAnswers > 0) {
+    if (
+        missingAnswers > 0
+    ) {
 
         elements.exportWarning.hidden =
             false;
+
 
         const span =
             elements.exportWarning.querySelector(
                 "span"
             );
+
 
         if (span) {
 
@@ -1289,32 +2771,6 @@ function updateExportWarning() {
 
 
 /* =========================================================
-   ADD QUESTION PLACEHOLDER
-   ========================================================= */
-
-function handleAddQuestionPlaceholder() {
-
-    showToast(
-        "Question cropping will be enabled in Step 4.",
-        "info"
-    );
-}
-
-
-/* =========================================================
-   EXPORT PLACEHOLDER
-   ========================================================= */
-
-function handleExportPlaceholder() {
-
-    showToast(
-        "The standalone exam generator will be enabled in a later step.",
-        "info"
-    );
-}
-
-
-/* =========================================================
    PROJECT SAVE
    ========================================================= */
 
@@ -1323,16 +2779,10 @@ function saveProject() {
     syncSettingsFromForm();
 
 
-    /*
-     * At this stage there are no cropped questions yet.
-     *
-     * The structure is already designed so later steps can
-     * store all question images as data URLs.
-     */
-
     const project = {
 
-        version: 1,
+        version:
+            1,
 
         app:
             "CBT Premium Test Maker",
@@ -1345,8 +2795,10 @@ function saveProject() {
                 ? {
                     name:
                         currentPdfFile.name,
+
                     size:
                         currentPdfFile.size,
+
                     type:
                         currentPdfFile.type
                 }
@@ -1381,11 +2833,15 @@ function saveProject() {
 
 
         const url =
-            URL.createObjectURL(blob);
+            URL.createObjectURL(
+                blob
+            );
 
 
         const link =
-            document.createElement("a");
+            document.createElement(
+                "a"
+            );
 
 
         link.href =
@@ -1394,22 +2850,29 @@ function saveProject() {
 
         link.download =
             createSafeFileName(
-                appState.settings.testTitle ||
-                "CBT-Mock-Test"
+                appState.settings.testTitle
             ) +
             "-project.json";
 
 
-        document.body.appendChild(link);
+        document.body.appendChild(
+            link
+        );
+
 
         link.click();
+
 
         link.remove();
 
 
         setTimeout(
             () => {
-                URL.revokeObjectURL(url);
+
+                URL.revokeObjectURL(
+                    url
+                );
+
             },
             1000
         );
@@ -1420,12 +2883,14 @@ function saveProject() {
             "success"
         );
 
+
     } catch (error) {
 
         console.error(
             "Project save failed:",
             error
         );
+
 
         showToast(
             "Could not save the project.",
@@ -1436,10 +2901,12 @@ function saveProject() {
 
 
 /* =========================================================
-   PROJECT FILE LOAD
+   LOAD PROJECT
    ========================================================= */
 
-async function handleProjectFile(event) {
+async function handleProjectFile(
+    event
+) {
 
     const file =
         event.target.files &&
@@ -1466,39 +2933,43 @@ async function handleProjectFile(event) {
             JSON.parse(text);
 
 
-        validateProject(project);
+        validateProject(
+            project
+        );
 
 
-        /*
-         * Restore settings.
-         */
+        if (
+            project.settings
+        ) {
 
-        if (project.settings) {
+            appState.settings =
+                {
+                    ...appState.settings,
+                    ...project.settings
+                };
 
-            appState.settings = {
-                ...appState.settings,
-                ...project.settings
-            };
 
             applySettingsToForm();
         }
 
 
-        /*
-         * Restore questions.
-         *
-         * In Step 4+ this will contain cropped image data.
-         */
-
-        if (Array.isArray(project.questions)) {
+        if (
+            Array.isArray(
+                project.questions
+            )
+        ) {
 
             appState.questions =
                 project.questions;
+
         } else {
 
-            appState.questions = [];
+            appState.questions =
+                [];
         }
 
+
+        renderQuestionList();
 
         updateQuestionCounters();
 
@@ -1511,14 +2982,17 @@ async function handleProjectFile(event) {
             "success"
         );
 
+
     } catch (error) {
 
         hideLoading();
+
 
         console.error(
             "Project load failed:",
             error
         );
+
 
         showToast(
             error.message ||
@@ -1526,13 +3000,11 @@ async function handleProjectFile(event) {
             "error"
         );
 
+
     } finally {
 
-        /*
-         * Reset input so the same project can be loaded again.
-         */
-
-        event.target.value = "";
+        event.target.value =
+            "";
     }
 }
 
@@ -1541,12 +3013,15 @@ async function handleProjectFile(event) {
    PROJECT VALIDATION
    ========================================================= */
 
-function validateProject(project) {
+function validateProject(
+    project
+) {
 
     if (
         !project ||
         typeof project !== "object"
     ) {
+
         throw new Error(
             "Invalid project file."
         );
@@ -1556,8 +3031,9 @@ function validateProject(project) {
     if (
         project.app &&
         project.app !==
-        "CBT Premium Test Maker"
+            "CBT Premium Test Maker"
     ) {
+
         throw new Error(
             "This project was not created by CBT Premium Test Maker."
         );
@@ -1566,8 +3042,11 @@ function validateProject(project) {
 
     if (
         project.questions !== undefined &&
-        !Array.isArray(project.questions)
+        !Array.isArray(
+            project.questions
+        )
     ) {
+
         throw new Error(
             "Project question data is invalid."
         );
@@ -1576,7 +3055,7 @@ function validateProject(project) {
 
 
 /* =========================================================
-   APPLY SETTINGS TO FORM
+   APPLY SETTINGS
    ========================================================= */
 
 function applySettingsToForm() {
@@ -1607,9 +3086,19 @@ function applySettingsToForm() {
 
     elements.instructions.value =
         appState.settings.instructions;
+}
 
 
-    updateExportWarning();
+/* =========================================================
+   EXPORT PLACEHOLDER
+   ========================================================= */
+
+function handleExportPlaceholder() {
+
+    showToast(
+        "The standalone exam generator will be added in a later step.",
+        "info"
+    );
 }
 
 
@@ -1630,7 +3119,9 @@ function showToast(
 
 
     const toast =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
 
     toast.className =
@@ -1639,6 +3130,7 @@ function showToast(
 
     toast.innerHTML = `
         <div>
+
             <strong>
                 ${getToastTitle(type)}
             </strong>
@@ -1646,6 +3138,7 @@ function showToast(
             <span>
                 ${escapeHtml(message)}
             </span>
+
         </div>
     `;
 
@@ -1660,6 +3153,7 @@ function showToast(
 
             toast.style.animation =
                 "toast-out 0.18s ease both";
+
 
             setTimeout(
                 () => {
@@ -1678,7 +3172,9 @@ function showToast(
    TOAST TITLE
    ========================================================= */
 
-function getToastTitle(type) {
+function getToastTitle(
+    type
+) {
 
     switch (type) {
 
@@ -1708,6 +3204,7 @@ function showLoading(
     elements.loadingText.textContent =
         message;
 
+
     elements.loadingOverlay.hidden =
         false;
 }
@@ -1721,7 +3218,7 @@ function hideLoading() {
 
 
 /* =========================================================
-   MODAL HELPERS
+   MODAL
    ========================================================= */
 
 function openModal(
@@ -1733,6 +3230,7 @@ function openModal(
     elements.modalTitle.textContent =
         title;
 
+
     elements.modalMessage.textContent =
         message;
 
@@ -1741,19 +3239,17 @@ function openModal(
         false;
 
 
-    /*
-     * Replace the old click handler safely.
-     */
-
     elements.modalConfirmBtn.onclick =
         () => {
 
             closeModal();
 
+
             if (
                 typeof onConfirm ===
                 "function"
             ) {
+
                 onConfirm();
             }
         };
@@ -1765,6 +3261,7 @@ function closeModal() {
     elements.confirmModal.hidden =
         true;
 
+
     elements.modalConfirmBtn.onclick =
         null;
 }
@@ -1774,7 +3271,9 @@ function closeModal() {
    SAFE FILE NAME
    ========================================================= */
 
-function createSafeFileName(name) {
+function createSafeFileName(
+    name
+) {
 
     return String(name)
         .trim()
@@ -1797,7 +3296,8 @@ function createSafeFileName(name) {
         .slice(
             0,
             100
-        ) || "CBT-Mock-Test";
+        ) ||
+        "CBT-Mock-Test";
 }
 
 
@@ -1805,9 +3305,13 @@ function createSafeFileName(name) {
    HTML ESCAPE
    ========================================================= */
 
-function escapeHtml(value) {
+function escapeHtml(
+    value
+) {
 
-    return String(value ?? "")
+    return String(
+        value ?? ""
+    )
         .replace(
             /&/g,
             "&amp;"
@@ -1837,19 +3341,19 @@ function escapeHtml(value) {
 
 document.addEventListener(
     "keydown",
-    async (event) => {
-
-        /*
-         * Do not trigger shortcuts while typing in a form field.
-         */
+    async event => {
 
         const target =
             event.target;
 
+
         const isTyping =
-            target instanceof HTMLInputElement ||
-            target instanceof HTMLTextAreaElement ||
-            target instanceof HTMLSelectElement;
+            target instanceof
+                HTMLInputElement ||
+            target instanceof
+                HTMLTextAreaElement ||
+            target instanceof
+                HTMLSelectElement;
 
 
         if (isTyping) {
@@ -1857,25 +3361,23 @@ document.addEventListener(
         }
 
 
-        /*
-         * Left / right arrows navigate pages.
-         */
-
-        if (event.key === "ArrowLeft") {
+        if (
+            event.key ===
+            "ArrowLeft"
+        ) {
 
             await changePage(-1);
         }
 
 
-        if (event.key === "ArrowRight") {
+        if (
+            event.key ===
+            "ArrowRight"
+        ) {
 
             await changePage(1);
         }
 
-
-        /*
-         * + / - control zoom.
-         */
 
         if (
             event.key === "+" ||
@@ -1907,7 +3409,8 @@ window.addEventListener(
 
         console.error(
             "Unhandled application error:",
-            event.error || event.message
+            event.error ||
+            event.message
         );
     }
 );
